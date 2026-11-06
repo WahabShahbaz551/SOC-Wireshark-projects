@@ -4,7 +4,7 @@
 - **Objective:** Capture and dissect unencrypted HTTP communication, analyze GET and POST request/response headers, follow TCP streams, and extract cleartext payload data.
 - **Tools Used:** Wireshark v4.x, Web Browser / Sample PCAP
 - **Difficulty:** Beginner to Intermediate
-- **Status:** In Progress / Completed
+- **Status:**  Completed
 
 ---
 
@@ -37,9 +37,9 @@ http
 ![Step 1 Evidence](screenshots/step-1-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- *Source IP / Port:* `192.168.100.2:50433`
+- *Destination IP / Port:* `44.209.237.184:80`
+- *Protocol / Info:* `HTTP - GET / HTTP/1.1 (Frame 39)`
 
 ---
 ### Step 2: Filtering HTTP Requests
@@ -57,9 +57,9 @@ http.request.method == "GET"
 ![Step 2 Evidence](screenshots/step-2-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- *Source IP / Port:* `192.168.100.2:50433`
+- *Destination IP / Port:* `44.209.237.184:80`
+- *Protocol / Info:* `HTTP - GET / HTTP/1.1 (Host: httpbin.org)`
 
 ---
 ### Step 3: Dissecting Request Headers
@@ -77,9 +77,9 @@ http.request.method == "POST"
 ![Step 3 Evidence](screenshots/step-3-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- *Source IP / Port:* `192.168.100.2`
+- *Destination IP / Port:* `44.209.237.184:80`
+- *Protocol / Info:* `HTTP - POST /post HTTP/1.1 (HTML Form URL Encoded Payload)`
 
 ---
 ### Step 4: Following TCP Stream & Payload Extraction
@@ -97,21 +97,23 @@ http.response.code == 200
 ![Step 4 Evidence](screenshots/step-4-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- *Source IP / Port:* `44.209.237.184:80` (Server Response)
+- *Destination IP / Port:* `192.168.100.2` (Client)
+- *Protocol / Info:* `HTTP/1.1 200 OK (text/html; charset=utf-8, Length: 8143 bytes)`
 
 ---
 
 
-## 📊 Summary of Findings & Incident Analysis
+#### 📊 Summary of Findings & Incident Analysis
 
 | Attribute | Recorded Value | Notes |
 |---|---|---|
-| **Investigated Capture File** | `sample.pcapng` | Source capture |
-| **Primary Source IP** | `[Enter Source IP]` | Client machine |
-| **Primary Destination IP** | `[Enter Destination IP]` | Target server |
-| **Key Protocols Identified** | `HTTP` | Transport / Application Layer |
+| **Investigated Target** | `http://httpbin.org` | Unencrypted test web service |
+| **Primary Source IP** | `192.168.100.2` | Local Client Machine |
+| **Primary Destination IP** | `44.209.237.184` | Target Web Server (httpbin.org) |
+| **Tested Request Methods** | `GET` & `POST` | Verified both retrieval and form submission |
+| **Stream Index** | `tcp.stream eq 7` | Isolated TCP conversation |
+| **Payload Security Status** | Cleartext (Unencrypted) | Credentials/Form data completely exposed in transit |
 
 ---
 
