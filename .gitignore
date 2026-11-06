@@ -1,0 +1,13 @@
+# Wireshark temp & capture files
+*.pcapng.gz
+*.pcap.gz
+*.tmp
+
+# Operating System specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Secrets (NEVER commit live private keys)
+*.pem
+*.key
