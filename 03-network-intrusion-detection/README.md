@@ -1,125 +1,130 @@
-# Lab 03: Wireshark for Network Intrusion Detection
+# Lab 03: Network Intrusion & Port Scan Detection
 
 ## 📋 Lab Overview
-- **Objective:** Detect and analyze network reconnaissance and active intrusion attempts, such as Nmap port scans (SYN/FIN), brute-force authentication attacks, and traffic floods.
-- **Tools Used:** Wireshark v4.x, Web Browser / Sample PCAP
-- **Difficulty:** Beginner to Intermediate
-- **Status:** In Progress / Completed
+- **Objective:** Detect and analyze network reconnaissance activity by inspecting TCP flags, isolating stealth SYN port scans, profiling targeted services, and visualizing scan pacing via I/O graphs.
+- **Attack Technique:** TCP SYN Stealth Port Scan (MITRE ATT&CK T1046 - Network Service Discovery)
+- **Analyzed Capture File:** `portscan.pcap`
+- **Tools Used:** Wireshark v4.x
+- **Investigation Role:** Tier-1 SOC Analyst / Intrusion Analyst
+- **Status:** Completed
 
 ---
 
 ## 🔍 Key Wireshark Display Filters
 
-| Filter Syntax | Purpose / Description |
+| Display Filter | Purpose & Description |
 |---|---|
-| `tcp.flags.syn == 1 and tcp.flags.ack == 0` | Detects initial connection attempts (SYN scan detection) |
-| `tcp.flags.reset == 1` | Identifies RST packets returned by closed ports during scanning |
-| `icmp.type == 8 or icmp.type == 0` | Filters ICMP Echo Ping sweeps |
-| `ftp.response.code == 530` | Filters failed authentication attempts (useful for detecting brute-force) |
+| `tcp.flags.syn == 1 and tcp.flags.ack == 0` | Isolates initial TCP connection requests (`SYN` only) to detect port scanning |
+| `tcp.flags.reset == 1` | Checks for `RST` packets returned by closed ports (absent when packets are silently dropped) |
+| `ip.src == 10.100.18.12` | Filters any response traffic originating from the targeted victim host |
 
 ---
 
-## 🧪 Hands-on Investigation & Walkthrough
+## 🧪 Forensic Walkthrough & Evidence
 
-### Step 1: Detecting Reconnaissance & Port Scans
+### Step 1: Detecting TCP SYN Reconnaissance
 
 **Description:**
-Identify rapid sequential connection attempts across numerous destination ports from a single source IP address.
+Applied the `tcp.flags.syn == 1 and tcp.flags.ack == 0` display filter to isolate half-open connection attempts. The capture shows a single source host (`10.100.25.14`) rapidly probing sequential and well-known destination ports on `10.100.18.12` at a consistent interval of ~0.1 seconds per probe. Inspection of Frame 1 confirms the TCP `Flags: 0x002 (SYN)` bit is set with no accompanying acknowledgment.
 
 **Wireshark Display Filter:**
 ```wireshark
 tcp.flags.syn == 1 and tcp.flags.ack == 0
 ```
-
-**Evidence / Screenshot:**
-<!-- Place your captured screenshot in the screenshots/ directory and link it below -->
 ![Step 1 Evidence](screenshots/step-1-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- **Scanner / Attacker IP:** `10.100.25.14`
+- **Target / Victim IP:** `10.100.18.12`
+- **TCP Flags (Frame 1):** `0x002 (SYN)`, `Seq=0`, `Win=8`, `Len=0`
+- **Sample Probed Ports:** `139`, `135`, `445`, `80`, `22`, `515`, `23`, `21`, `6000`, `1025`, `25`, `111`
 
 ---
-### Step 2: Analyzing TCP Flag Combinations
+
+### Step 2: Profiling Scanned Ports via TCP Conversations
 
 **Description:**
-Detect stealth scan techniques such as SYN scans (`tcp.flags.syn == 1 and tcp.flags.ack == 0`), NULL scans, and XMAS scans.
+Opened `Statistics > Conversations` (TCP tab) to enumerate all targeted destination ports and inspect bidirectional packet counts. A total of 29 distinct TCP streams were recorded from `10.100.25.14` to `10.100.18.12`. Checking `tcp.flags.reset == 1` and `ip.src == 10.100.18.12` confirmed zero response packets from the victim, indicating either a host-based/perimeter firewall silently dropping probes or a unidirectional capture.
 
-**Wireshark Display Filter:**
-```wireshark
-tcp.flags.reset == 1
-```
+**Wireshark Tool:**
+`Statistics > Conversations (TCP)`
 
 **Evidence / Screenshot:**
 <!-- Place your captured screenshot in the screenshots/ directory and link it below -->
 ![Step 2 Evidence](screenshots/step-2-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- **Total TCP Conversations:** 29 unique port probes
+- **High-Risk Targeted Ports:** `21` (FTP), `22` (SSH), `23` (Telnet), `53` (DNS), `135/139/445` (SMB/RPC), `443` (HTTPS), `8080` (HTTP-Alt), `9100` (Printer/JetDirect)
+- **Victim Response Behavior:** 0 `RST` or `SYN/ACK` packets observed
 
 ---
-### Step 3: Investigating Brute Force Attempts
+
+### Step 3: Protocol Hierarchy & Payload Verification
 
 **Description:**
-Filter application-layer protocol responses (e.g. FTP 530 errors or SSH handshake bursts) indicating password spraying.
+Inspected `Statistics > Protocol Hierarchy` to verify whether the scan included higher-layer application payloads or additional transport protocols (such as UDP or ICMP). Results confirm that 100% of the 29 captured frames (1,740 total bytes; 4,936 bits/s) consist solely of Ethernet, IPv4, and raw TCP headers with zero application-layer data.
 
-**Wireshark Display Filter:**
-```wireshark
-icmp.type == 8 or icmp.type == 0
-```
+**Wireshark Tool:**
+`Statistics > Protocol Hierarchy`
+
+---
 
 **Evidence / Screenshot:**
 <!-- Place your captured screenshot in the screenshots/ directory and link it below -->
 ![Step 3 Evidence](screenshots/step-3-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- **Total Packets:** 29 frames (100% IPv4 / TCP)
+- **Total Traffic Volume:** 1,740 bytes (Average: 4,936 bits/s)
+- **Application Payloads:** None (`End Packets: 29` at TCP layer), confirming pure Layer-4 port enumeration
 
 ---
-### Step 4: Traffic Flow & I/O Graph Analysis
+
+### Step 4: Visualizing Scan Rate via I/O Graphs
 
 **Description:**
-Use `Statistics > Conversations` and `Statistics > I/O Graphs` to visualize anomalous spikes in packet rates.
+Generated a traffic rate timeline using `Statistics > I/O Graphs` at 1-second intervals. The graph demonstrates a steady, automated scanning cadence of **10 packets per second** across the first two seconds, tapering to 9 packets in the final second (29 packets total over ~2.8 seconds). This uniform rate is characteristic of a scripted or throttled port scanner (e.g., Nmap timing template).
 
-**Wireshark Display Filter:**
-```wireshark
-ftp.response.code == 530
-```
+**Wireshark Tool:**
+`Statistics > I/O Graphs`
 
 **Evidence / Screenshot:**
 <!-- Place your captured screenshot in the screenshots/ directory and link it below -->
 ![Step 4 Evidence](screenshots/step-4-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- **Scan Cadence:** Steady ~10 packets/sec (1 SYN probe every ~0.10 seconds)
+- **Capture Duration:** ~2.82 seconds
+- **Traffic Pattern:** Automated, uniform bursts with zero legitimate user session variance
 
 ---
 
+## 📊 Summary of Findings & Intrusion Indicators
 
-## 📊 Summary of Findings & Incident Analysis
-
-| Attribute | Recorded Value | Notes |
+| Attribute | Recorded Value | Security Context |
 |---|---|---|
-| **Investigated Capture File** | `sample.pcapng` | Source capture |
-| **Primary Source IP** | `[Enter Source IP]` | Client machine |
-| **Primary Destination IP** | `[Enter Destination IP]` | Target server |
-| **Key Protocols Identified** | `NETWORK` | Transport / Application Layer |
+| **Investigated Capture File** | `portscan.pcap` | Network reconnaissance capture |
+| **Scanner / Source IP** | `10.100.25.14` | Unauthorized scanning host |
+| **Target / Victim IP** | `10.100.18.12` | Scanned internal server/workstation |
+| **Scan Type Identified** | TCP SYN Stealth Scan | Half-open probes (`Flags: 0x002`) |
+| **Total Ports Probed** | 29 ports | Includes SMB, SSH, Telnet, FTP, HTTP/HTTPS |
+| **Scan Rate** | ~10 packets/sec | Automated 0.1s probe interval |
 
 ---
 
-## 🛡️ Security Implications & Key Takeaways
 
-Intrusion attempts leave distinct telemetry footprints. Recognizing reconnaissance at the packet level allows SOC analysts to block offending IPs before full exploitation occurs.
+## 🛡️ Security Implications & SOC Defense
+
+1. **Early Threat Detection (IDS/IPS Rules):** Configure Snort/Suricata or firewall thresholds to alert on high counts of `SYN` packets without `ACK` from a single source IP within a short time window.
+2. **Minimize Attack Surface:** Disable unused legacy services targeted in this scan (especially Telnet port `23`, FTP port `21`, and exposed SMB ports `135/139/445`).
+3. **Firewall Hardening:** Maintain silent drop rules (`DROP` rather than `REJECT`) on perimeter firewalls to deny attackers port-state feedback during reconnaissance.
+4. **Source Investigation:** Audit internal host `10.100.25.14` for unauthorized scanning tools (e.g., Nmap, Masscan) or potential lateral movement from an already compromised asset.
 
 ---
 
 ## 🔗 References & Learning Material
 - Wireshark User Guide: [wireshark.org/docs/dfref](https://www.wireshark.org/docs/dfref/)
 - Reference Lab: [0xrajneesh/Wireshark-Projects-for-beginners](https://github.com/0xrajneesh/Wireshark-Projects-for-beginners)
+- Capture Source: [Practical Packet Analysis Sample Captures](https://github.com/markofu/pcaps)
+- MITRE ATT&CK T1046: [Network Service Discovery](https://attack.mitre.org/techniques/T1046/)
