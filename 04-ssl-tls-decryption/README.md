@@ -32,8 +32,7 @@ tls.handshake.type == 1
 ```
 
 **Evidence / Screenshot:**
-<!-- Place your captured screenshot in the screenshots/ directory and link it below -->
-![Step 1 Evidence](screenshots/step-1-evidence.png)
+
 
 **Observed Details:**
 - **Client IP:** `192.168.100.2`
@@ -52,11 +51,8 @@ Before launching Firefox, the `SSLKEYLOGFILE` environment variable was exported 
 **Wireshark Configuration:**
 `Edit > Preferences > Protocols > TLS > (Pre)-Master-Secret log filename`
 
-```
-
 **Evidence / Screenshot:**
-<!-- Place your captured screenshot in the screenshots/ directory and link it below -->
-![Step 2 Evidence](screenshots/step-2-evidence.png)
+
 
 **Observed Details:**
 - **Key Log File Path:** `D:\wireshark\sslkeylog.log`
@@ -75,8 +71,7 @@ http2
 ```
 
 **Evidence / Screenshot:**
-<!-- Place your captured screenshot in the screenshots/ directory and link it below -->
-![Step 3 Evidence](screenshots/step-3-evidence.png)
+
 
 **Observed Details:**
 - **Request Frame (Frame 74):** `HEADERS[3]: GET /get, WINDOW_UPDATE[3]` (`192.168.100.2` → `44.209.237.184`)
@@ -92,11 +87,9 @@ Right-clicked the decrypted HTTP/2 session and selected `Follow > TLS Stream` to
 
 **Wireshark Tool:**
 `Follow > TLS Stream`
-```
 
 **Evidence / Screenshot:**
-<!-- Place your captured screenshot in the screenshots/ directory and link it below -->
-![Step 4 Evidence](screenshots/step-4-evidence.png)
+
 
 **Observed Details:**
 - **Decrypted URL:** `https://httpbin.org/get`
@@ -126,8 +119,6 @@ Right-clicked the decrypted HTTP/2 session and selected `Follow > TLS Stream` to
 
 ---
 
-
-## 🔗 References & Learning Material
-- Wireshark User Guide: [wireshark.org/docs/dfref](https://www.wireshark.org/docs/dfref/)
+## 🔗 References
 - Reference Lab: [0xrajneesh/Wireshark-Projects-for-beginners](https://github.com/0xrajneesh/Wireshark-Projects-for-beginners)
 - Wireshark TLS Decryption Docs: [wiki.wireshark.org/TLS](https://wiki.wireshark.org/TLS)
