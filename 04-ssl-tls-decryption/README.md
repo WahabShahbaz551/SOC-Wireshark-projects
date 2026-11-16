@@ -1,50 +1,30 @@
 # Lab 04: Decrypting & Analyzing SSL/TLS Traffic
 
 ## 📋 Lab Overview
-- **Objective:** Configure Wireshark with pre-master secret key logs (`SSLKEYLOGFILE`) to decrypt TLS/HTTPS traffic and inspect the underlying plaintext protocol data in a controlled lab.
-- **Tools Used:** Wireshark v4.x, Web Browser / Sample PCAP
-- **Difficulty:** Beginner to Intermediate
-- **Status:** In Progress / Completed
+- **Objective:** Capture encrypted HTTPS/TLSv1.3 traffic, configure the `SSLKEYLOGFILE` environment variable to log browser session keys, load the pre-master secret log into Wireshark, and inspect the decrypted HTTP/2 application payloads in plaintext.
+- **Target Tested:** `https://httpbin.org/get` (Encrypted HTTPS over TLSv1.3 / HTTP/2)
+- **Tools Used:** Wireshark v4.x, Mozilla Firefox, Windows 10/11
+- **Investigation Role:** Tier-1 SOC Analyst / Network Forensics
+- **Status:** Completed
 
 ---
 
 ## 🔍 Key Wireshark Display Filters
 
-| Filter Syntax | Purpose / Description |
+| Display Filter | Purpose & Description |
 |---|---|
-| `tls` | Displays all Transport Layer Security packets |
-| `tls.handshake.type == 1` | Client Hello message (inspects SNI and supported cipher suites) |
-| `tls.handshake.type == 2` | Server Hello message (selected cipher suite and certificate exchange) |
-| `http` | Displays decrypted HTTP traffic once TLS keys are loaded |
+| `tls.handshake.type == 1` | Isolates TLS `Client Hello` packets to inspect SNI and cipher suites |
+| `http or http2` | Filters decrypted HTTP/1.1 and HTTP/2 traffic once TLS keys are loaded |
+| `http2` | Isolates decrypted HTTP/2 frames (`HEADERS`, `DATA`, `SETTINGS`) |
 
 ---
 
-## 🧪 Hands-on Investigation & Walkthrough
+## 🧪 Forensic Walkthrough & Evidence
 
-### Step 1: Capturing Encrypted TLS Sessions
-
-**Description:**
-Capture an HTTPS web session and inspect the Client Hello, Server Hello, and encrypted `Application Data` records.
-
-**Wireshark Display Filter:**
-```wireshark
-tls
-```
-
-**Evidence / Screenshot:**
-<!-- Place your captured screenshot in the screenshots/ directory and link it below -->
-![Step 1 Evidence](screenshots/step-1-evidence.png)
-
-**Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
-
----
-### Step 2: Configuring Key Logging (`SSLKEYLOGFILE`)
+### Step 1: Capturing the Encrypted TLS Handshake
 
 **Description:**
-Launch the browser with the `SSLKEYLOGFILE` environment variable configured to log session keys to a local file.
+Started a live packet capture in Wireshark while browsing `https://httpbin.org/get` in Firefox. Applied the `tls.handshake.type == 1` display filter to inspect the initial `Client Hello` handshake. Because the session is encrypted with TLSv1.3, application data appears opaque without decryption keys.
 
 **Wireshark Display Filter:**
 ```wireshark
@@ -53,22 +33,45 @@ tls.handshake.type == 1
 
 **Evidence / Screenshot:**
 <!-- Place your captured screenshot in the screenshots/ directory and link it below -->
+![Step 1 Evidence](screenshots/step-1-evidence.png)
+
+**Observed Details:**
+- **Client IP:** `192.168.100.2`
+- **Server IP:** `44.209.237.184`
+- **Protocol:** `TLSv1.3`
+- **Server Name Indication (SNI):** `httpbin.org` (Frame 36)
+- **Cipher Suites Offered:** 15 suites
+
+---
+
+### Step 2: Configuring `SSLKEYLOGFILE` in Wireshark
+
+**Description:**
+Before launching Firefox, the `SSLKEYLOGFILE` environment variable was exported (`D:\wireshark\sslkeylog.log`) to record ephemeral session keys. In Wireshark, navigated to `Edit > Preferences > Protocols > TLS` and set the `(Pre)-Master-Secret log filename` path to `D:\wireshark\sslkeylog.log`.
+
+**Wireshark Configuration:**
+`Edit > Preferences > Protocols > TLS > (Pre)-Master-Secret log filename`
+
+```
+
+**Evidence / Screenshot:**
+<!-- Place your captured screenshot in the screenshots/ directory and link it below -->
 ![Step 2 Evidence](screenshots/step-2-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- **Key Log File Path:** `D:\wireshark\sslkeylog.log`
+- **Security Note:** Session key logs were stored outside the repository directory and excluded from version control.
 
 ---
-### Step 3: Loading Keys into Wireshark
+
+### Step 3: Inspecting Decrypted HTTP/2 Traffic
 
 **Description:**
-Navigate to `Edit > Preferences > Protocols > TLS` and populate the `(Pre)-Master-Secret log filename` field with the generated key file.
+Upon applying the TLS key log in Wireshark, encrypted `Application Data` records were automatically decrypted into readable HTTP/2 frames. Filtering by `http2` revealed the underlying `GET /get` request (Frame 74) and `200 OK` JSON response (Frame 108), along with a dedicated `Decrypted TLS` byte tab.
 
 **Wireshark Display Filter:**
 ```wireshark
-tls.handshake.type == 2
+http2
 ```
 
 **Evidence / Screenshot:**
@@ -76,19 +79,19 @@ tls.handshake.type == 2
 ![Step 3 Evidence](screenshots/step-3-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- **Request Frame (Frame 74):** `HEADERS[3]: GET /get, WINDOW_UPDATE[3]` (`192.168.100.2` → `44.209.237.184`)
+- **Response Frame (Frame 108):** `HEADERS[3]: 200 OK, DATA[3], JSON (application/json)` (`44.209.237.184` → `192.168.100.2`)
+- **Decryption Proof:** `Decrypted TLS (70 bytes)` tab visible in the bottom byte pane
 
 ---
-### Step 4: Analyzing Decrypted Application Data
+
+### Step 4: Following the TLS Stream (Plaintext JSON Payload)
 
 **Description:**
-Verify that Wireshark generates a new `Decrypted TLS` tab and reveals the underlying cleartext HTTP requests and responses.
+Right-clicked the decrypted HTTP/2 session and selected `Follow > TLS Stream` to reconstruct the plaintext application payload. The decrypted stream exposed the full HTTP request headers (`Host`, `User-Agent`, `Accept-Encoding`) and the server's JSON response body.
 
-**Wireshark Display Filter:**
-```wireshark
-http
+**Wireshark Tool:**
+`Follow > TLS Stream`
 ```
 
 **Evidence / Screenshot:**
@@ -96,30 +99,35 @@ http
 ![Step 4 Evidence](screenshots/step-4-evidence.png)
 
 **Observed Details:**
-- *Source IP / Port:* `[Fill in from capture]`
-- *Destination IP / Port:* `[Fill in from capture]`
-- *Protocol / Info:* `[Fill in from capture]`
+- **Decrypted URL:** `https://httpbin.org/get`
+- **Method:** `GET`
+- **Host Header:** `httpbin.org`
+- **User-Agent:** `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:160.0) Gecko/20100101 Firefox/160.0`
+- **Payload Format:** Plaintext JSON (`"args"`, `"headers"`, `"method"`, `"origin"`, `"url"`)
 
 ---
 
-
-## 📊 Summary of Findings & Incident Analysis
+## 📊 Summary of Findings
 
 | Attribute | Recorded Value | Notes |
 |---|---|---|
-| **Investigated Capture File** | `sample.pcapng` | Source capture |
-| **Primary Source IP** | `[Enter Source IP]` | Client machine |
-| **Primary Destination IP** | `[Enter Destination IP]` | Target server |
-| **Key Protocols Identified** | `SSL` | Transport / Application Layer |
+| **Investigated Target** | `https://httpbin.org/get` | HTTPS endpoint using TLSv1.3 |
+| **Client IP (Source)** | `192.168.100.2` | Local machine |
+| **Server IP (Destination)** | `44.209.237.184` | `httpbin.org` server |
+| **Negotiated Protocols** | `TLSv1.3` / `HTTP2` | Encrypted transport, multiplexed application layer |
+| **Decryption Method** | `SSLKEYLOGFILE` | Pre-Master-Secret key log |
 
 ---
 
-## 🛡️ Security Implications & Key Takeaways
+## 🛡️ Security Implications & SOC Defense
 
-While TLS provides confidentiality and integrity across public networks, enterprise SOCs and threat hunters often utilize TLS inspection to identify malicious payloads hidden inside encrypted streams.
+1. **Visibility in Enterprise SOCs:** Because modern malware and C2 channels increasingly use TLS/HTTPS, SOC teams rely on controlled TLS inspection (SSL proxies or endpoint key logging in sandboxes) to regain payload visibility.
+2. **Key Protection:** `SSLKEYLOGFILE` must never be enabled on production machines or committed to repositories—anyone possessing the key log can retroactively decrypt captured TLS sessions, even with Perfect Forward Secrecy (PFS).
 
 ---
+
 
 ## 🔗 References & Learning Material
 - Wireshark User Guide: [wireshark.org/docs/dfref](https://www.wireshark.org/docs/dfref/)
 - Reference Lab: [0xrajneesh/Wireshark-Projects-for-beginners](https://github.com/0xrajneesh/Wireshark-Projects-for-beginners)
+- Wireshark TLS Decryption Docs: [wiki.wireshark.org/TLS](https://wiki.wireshark.org/TLS)
